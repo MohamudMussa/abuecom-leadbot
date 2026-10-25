@@ -1,0 +1,47 @@
+name: Check for new leads
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      test:
+        description: 'Post a fake test lead to Slack'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: leadbot
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Post new leads to Slack
+        run: node leadbot.mjs
+        env:
+          META_TOKEN: ${{ secrets.META_TOKEN }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          FORM_IDS: ${{ vars.FORM_IDS }}
+          TEST_LEAD: ${{ inputs.test && '1' || '' }}
+      - name: Save progress (and keep the schedule alive)
+        if: ${{ !inputs.test }}
+        run: |
+          git config user.name "leadbot"
+          git config user.email "leadbot@users.noreply.github.com"
+          # Commit when there are new leads, or once a month so GitHub keeps the schedule on.
+          last=$(git log -1 --format=%ct)
+          if ! git diff --quiet state.json 2>/dev/null || [ $(( $(date +%s) - last )) -gt 2592000 ]; then
+            git add state.json
+            git commit -m "Update lead state" --allow-empty -q
+            git push -q
+          fi
