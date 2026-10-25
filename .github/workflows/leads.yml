@@ -1,7 +1,7 @@
 name: Check for new leads
 
 # GitHub throttles scheduled runs on new repos (sometimes hours apart), so each run
-# stays alive for ~5h50m and checks Meta every 2 minutes. A newer run replaces the old one.
+# stays alive for ~5h50m and checks Meta every 20 seconds. A newer run replaces the old one.
 on:
   schedule:
     - cron: '*/20 * * * *'
@@ -34,7 +34,7 @@ jobs:
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           TEST_LEAD: '1'
-      - name: Watch for leads every 2 minutes
+      - name: Watch for leads every 20 seconds
         if: ${{ !inputs.test }}
         env:
           META_TOKEN: ${{ secrets.META_TOKEN }}
@@ -49,7 +49,7 @@ jobs:
             if ! git diff --quiet state.json; then
               git add state.json && git commit -qm "Update lead state" && (git pull -q --rebase && git push -q) || echo "push failed, will retry"
             fi
-            sleep 120
+            sleep 20
           done
           # Keep GitHub from switching the schedule off after 60 quiet days.
           if [ $(( $(date +%s) - $(git log -1 --format=%ct) )) -gt 2592000 ]; then git commit -q --allow-empty -m "keepalive" && git push -q; fi
