@@ -1,8 +1,10 @@
 name: Check for new leads
 
+# GitHub throttles scheduled runs on new repos (sometimes hours apart), so each run
+# stays alive for ~5h50m and checks Meta every 2 minutes. A newer run replaces the old one.
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/20 * * * *'
   workflow_dispatch:
     inputs:
       test:
@@ -15,33 +17,39 @@ permissions:
 
 concurrency:
   group: leadbot
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Post new leads to Slack
+      - name: Test lead
+        if: ${{ inputs.test }}
         run: node leadbot.mjs
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          TEST_LEAD: '1'
+      - name: Watch for leads every 2 minutes
+        if: ${{ !inputs.test }}
         env:
           META_TOKEN: ${{ secrets.META_TOKEN }}
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           FORM_IDS: ${{ vars.FORM_IDS }}
-          TEST_LEAD: ${{ inputs.test && '1' || '' }}
-      - name: Save progress (and keep the schedule alive)
-        if: ${{ !inputs.test }}
         run: |
           git config user.name "leadbot"
           git config user.email "leadbot@users.noreply.github.com"
-          # Commit when there are new leads, or once a month so GitHub keeps the schedule on.
-          last=$(git log -1 --format=%ct)
-          if ! git diff --quiet state.json 2>/dev/null || [ $(( $(date +%s) - last )) -gt 2592000 ]; then
-            git add state.json
-            git commit -m "Update lead state" --allow-empty -q
-            git push -q
-          fi
+          end=$(( $(date +%s) + 345*60 ))
+          while [ $(date +%s) -lt $end ]; do
+            node leadbot.mjs || echo "check failed, will retry"
+            if ! git diff --quiet state.json; then
+              git add state.json && git commit -qm "Update lead state" && (git pull -q --rebase && git push -q) || echo "push failed, will retry"
+            fi
+            sleep 120
+          done
+          # Keep GitHub from switching the schedule off after 60 quiet days.
+          if [ $(( $(date +%s) - $(git log -1 --format=%ct) )) -gt 2592000 ]; then git commit -q --allow-empty -m "keepalive" && git push -q; fi
