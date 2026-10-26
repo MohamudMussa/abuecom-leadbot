@@ -55,9 +55,19 @@ function flatten(lead) {
   return out;
 }
 
+// Exact field names win. Partial matches skip question keys (they end in "?"),
+// so "We design product-first emails...?" is never read as the email field.
 const pick = (f, ...keys) => {
-  for (const k of Object.keys(f)) if (keys.some((want) => k.toLowerCase().includes(want))) return f[k];
+  for (const want of keys) if (f[want] !== undefined) return f[want];
+  for (const k of Object.keys(f)) {
+    if (k.includes('?') || k.length > 40) continue;
+    if (keys.some((want) => k.toLowerCase().includes(want))) return f[k];
+  }
   return '';
+};
+const answerTo = (f, word) => {
+  const k = Object.keys(f).find((key) => key.toLowerCase().includes(word));
+  return k ? f[k] : '';
 };
 
 function cleanPhone(raw) {
@@ -84,7 +94,8 @@ function buildMessage(lead) {
   const email = pick(f, 'email');
   const phone = cleanPhone(pick(f, 'phone'));
   const website = pick(f, 'website', 'store', 'url', 'site');
-  const revenue = pick(f, 'revenue', 'month', 'sales');
+  const revenue = answerTo(f, 'revenue') || pick(f, 'revenue', 'sales');
+  const start = answerTo(f, 'when can you start');
   const known = new Set(['full_name', 'email', 'phone_number']);
   const answers = Object.entries(f)
     .filter(([k]) => !known.has(k))
@@ -92,10 +103,12 @@ function buildMessage(lead) {
     .join('\n');
 
   const site = website ? website.replace(/^https?:\/\//, '').replace(/\/$/, '') : 'your store';
-  const opener = `Salaam ${first}, it's Mussa from Abu Ecom. You just asked about getting your email done for ${site}. Have you got 2 mins for a quick call today?`;
+  const opener = `Salaam ${first}, it's Mussa from Abu Ecom. Saw you just qualified for the email build for ${site}. When's good for a quick call today so we can get you booked in?`;
   const wa = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(opener)}` : null;
   const junk = junkReasons({ email, phone, website, name });
-  const big = /(20k|50k|100k|150k|\$5k\+|5k\+)/i.test(revenue);
+  // Hot = $10k+ and ready now (new form). Old form: "$5k+" still counts as hot.
+  const bigRevenue = /(10k|20k|50k|100k|150k)/i.test(revenue) || (/5k\+/i.test(revenue) && !start);
+  const big = bigRevenue && (!start || /ready now/i.test(start.replace(/_/g, ' ')));
   const head = junk.length ? ':warning: Probably junk' : big ? ':fire: Hot lead' : ':crescent_moon: New lead';
 
   const blocks = [
@@ -140,7 +153,10 @@ async function main() {
         { name: 'email', values: ['mussa@abuecom.com'] },
         { name: 'phone_number', values: ['p:+447700900123'] },
         { name: 'website', values: ['abuecom.com'] },
-        { name: 'monthly_revenue', values: ['$5k+_/month'] },
+        { name: 'are_you_muslim?', values: ['yes'] },
+        { name: 'we_design_product-first_emails,_with_no_photos_of_women._is_that_okay?', values: ["yes,_that's_fine"] },
+        { name: "what's_your_monthly_revenue?", values: ['$20k+_/month'] },
+        { name: "it's_a_one-off_$997._when_can_you_start?", values: ['ready_now'] },
       ],
     }));
     return console.log('Test lead posted.');
