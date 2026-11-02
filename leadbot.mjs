@@ -87,6 +87,8 @@ function junkReasons({ email, phone, website, name }) {
   return r;
 }
 
+const BF_FORMS = ['1265602795773385'];
+
 function buildMessage(lead) {
   const f = flatten(lead);
   const name = pick(f, 'full_name', 'name') || 'there';
@@ -103,11 +105,18 @@ function buildMessage(lead) {
     .join('\n');
 
   const site = website ? website.replace(/^https?:\/\//, '').replace(/\/$/, '') : 'your store';
-  const opener = `Salaam ${first}, it's Mussa from Abu Ecom. Saw you just qualified for the email build for ${site}. When's good for a quick call today so we can get you booked in?`;
+  // Black Friday 2026 form gets its own opener
+  const isBF = BF_FORMS.includes(String(lead.form_id || ''));
+  const opener = isBF
+    ? `Salaam ${first}, it's Mussa from Abu Ecom. Saw you want your Black Friday emails done for ${site}. When's good for a quick call today so we can plan them and get you started before 14 Nov?`
+    : `Salaam ${first}, it's Mussa from Abu Ecom. Saw you just qualified for the email build for ${site}. When's good for a quick call today so we can get you booked in?`;
   const wa = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(opener)}` : null;
   const junk = junkReasons({ email, phone, website, name });
   // Hot = $10k+ and ready now (new form). Old form: "$5k+" still counts as hot.
-  const bigRevenue = /(10k|20k|50k|100k|150k)/i.test(revenue) || (/5k\+/i.test(revenue) && !start);
+  const rev = (revenue || '').replace(/_/g, ' ');
+  const bigRevenue = isBF
+    ? /(\$?10k to|25k\+)/i.test(rev)
+    : /(10k|20k|50k|100k|150k)/i.test(revenue) || (/5k\+/i.test(revenue) && !start);
   const big = bigRevenue && (!start || /ready now/i.test(start.replace(/_/g, ' ')));
   const head = junk.length ? ':warning: Probably junk' : big ? ':fire: Hot lead' : ':crescent_moon: New lead';
 
