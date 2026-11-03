@@ -6,6 +6,8 @@
 //   META_TOKEN     Page access token with leads_retrieval
 //   FORM_IDS       Comma-separated lead form IDs
 //   SLACK_WEBHOOK  Slack incoming webhook URL (#leads)
+//   SHEET_WEBHOOK  Optional Google Apps Script web app URL that adds each lead to the leads sheet
+//   SHEET_KEY      Shared key the sheet script checks
 //   DRY_RUN=1      Print messages instead of posting
 //   TEST_LEAD=1    Post one fake lead to Slack to check the format
 
@@ -14,7 +16,7 @@ import { createHash } from 'node:crypto';
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const STATE_FILE = new URL('./state.json', import.meta.url);
-const { META_TOKEN, FORM_IDS = '', SLACK_WEBHOOK, DRY_RUN, TEST_LEAD } = process.env;
+const { META_TOKEN, FORM_IDS = '', SLACK_WEBHOOK, SHEET_WEBHOOK, SHEET_KEY, DRY_RUN, TEST_LEAD } = process.env;
 
 const hash = (s) => createHash('sha256').update(String(s)).digest('hex').slice(0, 16);
 
@@ -36,7 +38,7 @@ async function graph(path, params = {}) {
 async function fetchLeads(formId, since) {
   const leads = [];
   let page = await graph(`/${formId}/leads`, {
-    fields: 'id,created_time,field_data,ad_name,adset_name,campaign_name,form_id,is_organic',
+    fields: 'id,created_time,field_data,ad_name,adset_name,campaign_name,form_id,is_organic,platform',
     filtering: [{ field: 'time_created', operator: 'GREATER_THAN', value: since }],
     limit: '100',
   });
@@ -95,7 +97,7 @@ function buildMessage(lead) {
   const first = name.trim().split(/\s+/)[0];
   const email = pick(f, 'email');
   const phone = cleanPhone(pick(f, 'phone'));
-  const website = pick(f, 'website', 'store', 'url', 'site');
+  const website = pick(f, 'website', 'store', 'url', 'site') || answerTo(f, 'website');
   const revenue = answerTo(f, 'revenue') || pick(f, 'revenue', 'sales');
   const start = answerTo(f, 'when can you start');
   const known = new Set(['full_name', 'email', 'phone_number']);
@@ -152,6 +154,38 @@ async function postSlack(msg) {
   if (!res.ok) throw new Error(`Slack error ${res.status}: ${await res.text()}`);
 }
 
+// Same columns as the "Abu Ecom Leads (all Meta leads)" sheet.
+const COUNTRY = [['971', 'UAE'], ['974', 'Qatar'], ['966', 'Saudi'], ['234', 'Nigeria'], ['44', 'UK'], ['61', 'Australia'], ['1', 'US/Canada']];
+function sheetRow(lead) {
+  const f = flatten(lead);
+  const name = pick(f, 'full_name', 'name');
+  const email = pick(f, 'email');
+  const phone = cleanPhone(pick(f, 'phone'));
+  const website = pick(f, 'website', 'store', 'url', 'site') || answerTo(f, 'website');
+  const revenue = (answerTo(f, 'revenue') || pick(f, 'revenue', 'sales')).replace(/_/g, ' ');
+  const country = phone ? (COUNTRY.find(([c]) => phone.startsWith(c)) || [, 'Other'])[1] : '';
+  const junk = junkReasons({ email, phone, website, name });
+  const flag = junk.length ? 'Looks fake' : /(0-1k|under \$?1k)/i.test(revenue) ? 'Under $1k' : '';
+  const date = new Date(lead.created_time).toLocaleString('sv-SE', { timeZone: 'Europe/London' }).slice(0, 16);
+  const cc = country && country !== 'Other' ? COUNTRY.find(([, n]) => n === country)[0] : '';
+  const shownPhone = phone ? `+${cc ? cc + ' ' + phone.slice(cc.length) : phone}` : '';
+  return [date, name, email, shownPhone, country, website, revenue, answerTo(f, 'muslim'), answerTo(f, 'shopify'), flag,
+    lead.campaign_name || '', lead.adset_name || '', lead.ad_name || '', String(lead.form_id || ''), lead.platform || ''];
+}
+
+async function postSheet(leads) {
+  if (!SHEET_WEBHOOK || !leads.length) return;
+  const rows = leads.slice().reverse().map(sheetRow); // newest first, like the sheet
+  if (DRY_RUN) return console.log(JSON.stringify(rows, null, 2));
+  try {
+    const res = await fetch(SHEET_WEBHOOK, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key: SHEET_KEY, rows }) });
+    const text = await res.text();
+    if (!res.ok || text.trim() !== 'ok') console.error(`Sheet error ${res.status}: ${text.slice(0, 200)}`);
+  } catch (e) {
+    console.error('Sheet error: ' + e.message); // never block Slack alerts
+  }
+}
+
 async function main() {
   if (TEST_LEAD) {
     await postSlack(buildMessage({
@@ -190,6 +224,7 @@ async function main() {
     await postSlack(buildMessage(lead));
     seen.add(hash(lead.id));
   }
+  await postSheet(fresh.filter((l) => !/dummy data/i.test(JSON.stringify(l.field_data))));
 
   const next = { since: newest, seen: [...seen].slice(-300) };
   if (!DRY_RUN) writeFileSync(STATE_FILE, JSON.stringify(next, null, 2) + '\n');
