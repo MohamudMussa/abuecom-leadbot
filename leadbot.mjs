@@ -86,6 +86,12 @@ function junkReasons({ email, phone, website, name }) {
   if (/^(test|asdf|xx|aa|qq)/i.test(email) || /@(test|example|edd)\./i.test(email) || /([a-z])\1{3,}/i.test(email.split('@')[0] || '')) r.push('fake-looking email');
   if (website && !/\.[a-z]{2,}/i.test(website)) r.push('no real website');
   if (/^(bob|test|asdf|na|n\/a)$/i.test(name.trim())) r.push('fake-looking name');
+  // Trolls: shock or adult sites, abuse, and famous company emails nobody runs a store from
+  const all = `${name} ${email} ${website}`.toLowerCase();
+  // Whole words only for abuse, so names like Nazia or Nazir don't trip it
+  if (/meatspin|lemonparty|goatse|tubgirl|2girls|chaturbate|pornhub|xvideos|xhamster|onlyfans|porn|xxx|hentai|\b(rapist|hitler|nazis?|fuck\w*|shit\w*|cunt)\b/.test(all)) r.push('troll or adult site');
+  if (/@(jmail|notyet|hha|edd|bethesda\w*|microsoft|apple|google|tesla|spacex|amazon|meta|facebook|nasa|whitehouse|fbi|cia)\.(com|gov|org)/.test(email.toLowerCase())) r.push('fake company email');
+  if (/(.)\1{4,}|shshhs|asdfg|qwert/.test(all)) r.push('keyboard mash');
   return r;
 }
 
