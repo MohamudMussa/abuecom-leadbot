@@ -85,6 +85,7 @@ function junkReasons({ email, phone, website, name }) {
   if (phone && phone.length < 9) r.push('phone too short');
   if (/^(test|asdf|xx|aa|qq)/i.test(email) || /@(test|example|edd)\./i.test(email) || /([a-z])\1{3,}/i.test(email.split('@')[0] || '')) r.push('fake-looking email');
   if (website && !/\.[a-z]{2,}/i.test(website)) r.push('no real website');
+  if (/^(https?:\/\/)?(www\.)?(none|noneyet|notyet|nothing|na|no|nope|comingsoon|soon|tbd|tba)(yet)?(\.[a-z]+)?\/?$/i.test(website.trim())) r.push('no store yet');
   if (/^(bob|test|asdf|na|n\/a)$/i.test(name.trim())) r.push('fake-looking name');
   // Trolls: shock or adult sites, abuse, and famous company emails nobody runs a store from
   const all = `${name} ${email} ${website}`.toLowerCase();
