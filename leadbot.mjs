@@ -113,11 +113,12 @@ function buildMessage(lead) {
     .join('\n');
 
   const site = website ? website.replace(/^https?:\/\//, '').replace(/\/$/, '') : 'your store';
+  // Opener only aims to get a reply. Pitch the call after they answer.
   // Black Friday 2026 form gets its own opener
   const isBF = BF_FORMS.includes(String(lead.form_id || ''));
   const opener = isBF
-    ? `Salaam ${first}, it's Mussa from Abu Ecom. Saw you want your Black Friday emails done for ${site}. When's good for a quick call today so we can plan them and get you started before 14 Nov?`
-    : `Salaam ${first}, it's Mussa from Abu Ecom. Saw you just qualified for the email build for ${site}. When's good for a quick call today so we can get you booked in?`;
+    ? `Salaam ${first}! It's Mussa from Abu Ecom 👋 You just filled in the Black Friday form for ${site}. Is this the best number for you?`
+    : `Salaam ${first}! It's Mussa from Abu Ecom 👋 You just filled in the email build form for ${site}. Is this the best number for you?`;
   const wa = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(opener)}` : null;
   const junk = junkReasons({ email, phone, website, name });
   // Hot = $10k+ and ready now (new form). Old form: "$5k+" still counts as hot.
