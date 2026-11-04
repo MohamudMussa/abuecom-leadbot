@@ -40,6 +40,7 @@ jobs:
           META_TOKEN: ${{ secrets.META_TOKEN }}
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           FORM_IDS: ${{ vars.FORM_IDS }}
+          BF_FORMS: ${{ vars.BF_FORMS }}
           SHEET_WEBHOOK: ${{ secrets.SHEET_WEBHOOK }}
           SHEET_KEY: ${{ secrets.SHEET_KEY }}
         run: |

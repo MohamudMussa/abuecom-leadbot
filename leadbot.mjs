@@ -79,8 +79,10 @@ function cleanPhone(raw) {
   return d;
 }
 
-function junkReasons({ email, phone, website, name }) {
+function junkReasons({ email, phone, website, name, shopify = '' }) {
   const r = [];
+  // BF26 v2 form asks this first. "No" should end the form, so a "No" here means it slipped through.
+  if (/^no/i.test(String(shopify).replace(/_/g, ' ').trim())) r.push('says no Shopify store');
   if (/555\d{4}$/.test(phone) || /^1?\d{3}5550\d{3}$/.test(phone)) r.push('fake-looking phone');
   if (phone && phone.length < 9) r.push('phone too short');
   if (/^(test|asdf|xx|aa|qq)/i.test(email) || /@(test|example|edd)\./i.test(email) || /([a-z])\1{3,}/i.test(email.split('@')[0] || '')) r.push('fake-looking email');
@@ -96,7 +98,8 @@ function junkReasons({ email, phone, website, name }) {
   return r;
 }
 
-const BF_FORMS = ['1265602795773385'];
+// Black Friday forms. Add new ones with the BF_FORMS repo variable (comma-separated).
+const BF_FORMS = ['1265602795773385', ...String(process.env.BF_FORMS || '').split(',').map((x) => x.trim()).filter(Boolean)];
 
 function buildMessage(lead) {
   const f = flatten(lead);
@@ -121,11 +124,11 @@ function buildMessage(lead) {
     ? `Salaam ${first}! It's Mussa from Abu Ecom 👋 You just filled in the Black Friday form for ${site}. Is this the best number for you?`
     : `Salaam ${first}! It's Mussa from Abu Ecom 👋 You just filled in the email build form for ${site}. Is this the best number for you?`;
   const wa = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(opener)}` : null;
-  const junk = junkReasons({ email, phone, website, name });
+  const junk = junkReasons({ email, phone, website, name, shopify: answerTo(f, 'shopify') });
   // Hot = $10k+ and ready now (new form). Old form: "$5k+" still counts as hot.
   const rev = (revenue || '').replace(/_/g, ' ');
   const bigRevenue = isBF
-    ? /(\$?10k to|25k\+)/i.test(rev)
+    ? /(10k to|10k\+|25k\+)/i.test(rev)
     : /(10k|20k|50k|100k|150k)/i.test(revenue) || (/5k\+/i.test(revenue) && !start);
   const big = bigRevenue && (!start || /ready now/i.test(start.replace(/_/g, ' ')));
   const head = junk.length ? ':warning: Probably junk' : big ? ':fire: Hot lead' : ':crescent_moon: New lead';
@@ -172,7 +175,7 @@ function sheetRow(lead) {
   const website = pick(f, 'website', 'store', 'url', 'site') || answerTo(f, 'website');
   const revenue = (answerTo(f, 'revenue') || pick(f, 'revenue', 'sales')).replace(/_/g, ' ');
   const country = phone ? (COUNTRY.find(([c]) => phone.startsWith(c)) || [, 'Other'])[1] : '';
-  const junk = junkReasons({ email, phone, website, name });
+  const junk = junkReasons({ email, phone, website, name, shopify: answerTo(f, 'shopify') });
   const flag = junk.length ? 'Looks fake' : /(0-1k|under \$?1k)/i.test(revenue) ? 'Under $1k' : '';
   const date = new Date(lead.created_time).toLocaleString('sv-SE', { timeZone: 'Europe/London' }).slice(0, 16);
   const cc = country && country !== 'Other' ? COUNTRY.find(([, n]) => n === country)[0] : '';
